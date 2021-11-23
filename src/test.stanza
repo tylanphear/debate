@@ -1,0 +1,69 @@
+#use-added-syntax(tests)
+defpackage debate/test:
+  import core
+  import collections
+  import debate
+
+deftest should-parse-short-flag-if-present:
+  val args = ArgumentParser()
+    $> add{_, Flag("build") $> short{_, "b"}}
+    $> parse{_, ["foo", "-b"]}
+  #EXPECT(flag?(args, "build"))
+
+deftest should-not-parse-short-flag-if-not-present:
+  val args = ArgumentParser()
+    $> add{_, Flag("version") $> short{_, "b"}}
+    $> parse{_, ["foo", "-c"]}
+  #EXPECT(not flag?(args, "version"))
+
+deftest should-parse-long-flag-if-present:
+  val args = ArgumentParser()
+    $> add{_, Flag("build") $> long{_, "build"}}
+    $> parse{_, ["foo", "--build"]}
+  #EXPECT(flag?(args, "build"))
+
+deftest should-not-parse-long-flag-if-not-present:
+  val args = ArgumentParser()
+    $> add{_, Flag("version") $> long{_, "b"}}
+    $> parse{_, ["foo", "--c"]}
+  #EXPECT(not flag?(args, "version"))
+
+deftest should-parse-long-or-short-flag-if-present:
+  val parser = ArgumentParser()
+    $> add{_,
+      Flag("version")
+        $> short{_, "v"}
+        $> long{_, "version"}
+    }
+
+  val args1 = parse(parser, ["foo", "-v"])
+  #EXPECT(flag?(args1, "version"))
+
+  val args2 = parse(parser, ["foo", "--version"])
+  #EXPECT(flag?(args2, "version"))
+
+deftest parse-flag-takes-value:
+  val parser = ArgumentParser()
+    $> add{_,
+      Flag("config")
+        $> short{_, "c"}
+        $> long{_, "config"}
+        $> takes-value
+    }
+
+  val args1 = parse(parser, ["foo", "-c", "folder"])
+  #EXPECT(args1 $> value?{_, "config"} $> value! == "folder")
+
+  val args2 = parse(parser, ["foo", "--config", "folder"])
+  #EXPECT(args2 $> value?{_, "config"} $> value! == "folder")
+
+deftest parse-positional-flag-with-preceding-flag:
+  val args = ArgumentParser()
+    $> add{_, Flag("source-file") $> index{_, 1}}
+    $> add{_, Flag("build") $> short{_, "b"} $> takes-value}
+    $> parse{_, ["foo", "-b", "config", "input.stanza", "-f", "--foo"]}
+  #EXPECT(args $> value?{_, "source-file"} $> value! == "input.stanza")
+
+deftest parse-flag-terminator:
+  val args = ArgumentParser() $> parse{_, ["foo", "-b", "--build", "--", "-b", "--build"]}
+  #EXPECT(/args(args) == ["foo", "--", "-b", "--build"])

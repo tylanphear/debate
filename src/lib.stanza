@@ -1,0 +1,146 @@
+defpackage debate:
+  import core
+  import collections
+  import maybe-utils
+
+public deftype ArgumentParser
+public defmulti add (a: ArgumentParser, f: Flag) -> ArgumentParser
+public defmulti parse (a: ArgumentParser, args: Seqable<String>) -> ParsedArgs
+
+public defn ArgumentParser ():
+  val short-flags = HashTable<String, Flag>()
+  val long-flags = HashTable<String, Flag>()
+  val positional-flags = HashTable<Int, String>()
+
+  new ArgumentParser:
+    defmethod add (this, f: Flag) -> ArgumentParser:
+      match(short?(f)):
+        (flag: One<String>): short-flags[value!(flag)] = f
+        (_: None): false
+      match(long?(f)):
+        (flag: One<String>): long-flags[value!(flag)] = f
+        (_: None): false
+      match(index?(f)):
+        (index: One<Int>): positional-flags[value!(index)] = name(f)
+        (_: None): false
+      this
+
+    defmethod parse (this, args0: Seqable<String>) -> ParsedArgs:
+      val args = to-seq(args0)
+
+      defn parse-value? (flag: Flag) -> Maybe<String>:
+        if takes-value?(flag):
+          One(next(args))
+        else:
+          None()
+
+      val parsed-flags = HashTable<String, Maybe<String>>()
+      defn parse-flag (prefix: String, arg: String, flags: HashTable<String, Flag>) -> False:
+        val flag = arg[length(prefix) to false]
+        match(get?(flags, flag)):
+          (f: Flag): parsed-flags[name(f)] = parse-value?(f)
+          (_: False): false
+
+      val positional-args = Vector<String>()
+      add(positional-args, next(args))
+
+      var flag-terminator-reached: True|False = false
+
+      while not empty?(args):
+        val arg = next(args)
+
+        if arg == "--":
+          flag-terminator-reached = true
+
+        ; First check if this is a long or short flag
+        switch {prefix?(arg, _) and not flag-terminator-reached}:
+          "--": parse-flag("--", arg, long-flags)
+          "-": parse-flag("-", arg, short-flags)
+          else:
+            ; Otherwise it's a positional arg
+            val index = length(positional-args)
+            add(positional-args, arg)
+            ; Check if this is also a positional flag
+            match(get?(positional-flags, index)):
+              (name: String):
+                parsed-flags[name] = One(arg)
+              (_: False): false
+
+      ParsedArgs(positional-args, parsed-flags)
+
+public deftype Flag
+public defmulti name (f: Flag) -> String
+
+public defmulti short (f: Flag, s: String) -> Flag
+public defmulti short? (f: Flag) -> Maybe<String>
+
+public defmulti long (f: Flag, s: String) -> Flag
+public defmulti long? (f: Flag) -> Maybe<String>
+
+public defmulti takes-value (f: Flag) -> Flag
+public defmulti takes-value? (f: Flag) -> True|False
+
+public defmulti index (f: Flag, index: Int) -> Flag
+public defmulti index? (f: Flag) -> Maybe<Int>
+
+public defn Flag (name: String):
+  var short?: Maybe<String> = None()
+  var long?: Maybe<String> = None()
+  var takes-value?: True|False = false
+  var index?: Maybe<Int> = None()
+
+  new Flag:
+    defmethod name (this) -> String:
+      name
+
+    defmethod short (this, s: String) -> Flag:
+      short? = One(s)
+      this
+
+    defmethod short? (this) -> Maybe<String>:
+      short?
+
+    defmethod long (this, s: String) -> Flag:
+      long? = One(s)
+      this
+
+    defmethod long? (this) -> Maybe<String>:
+      long?
+
+    defmethod takes-value (this) -> Flag:
+      takes-value? = true
+      this
+
+    defmethod takes-value? (this) -> True|False:
+      takes-value?
+
+    defmethod index (this, index: Int) -> Flag:
+      index? = One(index)
+      this
+
+    defmethod index? (this) -> Maybe<Int>:
+      index?
+
+public deftype ParsedArgs
+public defmulti arg? (args: ParsedArgs, index: Int) -> Maybe<String>
+public defmulti args (args: ParsedArgs) -> Tuple<String>
+public defmulti value? (args: ParsedArgs, name: String) -> Maybe<String>
+public defmulti flag? (args: ParsedArgs, name: String) -> True|False
+
+defn ParsedArgs (args0: Seqable<String>, flags: HashTable<String, Maybe<String>>):
+  val positional-args = to-tuple(to-seq(args0))
+  new ParsedArgs:
+    defmethod arg? (this, index: Int) -> Maybe<String>:
+      if index < length(positional-args):
+        One(positional-args[index])
+      else:
+        None()
+
+    defmethod args (this) -> Tuple<String>:
+      positional-args
+
+    defmethod value? (this, name: String) -> Maybe<String>:
+      get?(flags, name) $> to-maybe $> flatten
+
+    defmethod flag? (this, name: String) -> True|False:
+      get?(flags, name) is-not False

@@ -1,0 +1,2 @@
+package debate defined-in "lib.stanza"
+package debate/test defined-in "test.stanza"
